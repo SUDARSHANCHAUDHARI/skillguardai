@@ -4,15 +4,17 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Default, Deserialize)]
 pub struct Frontmatter {
     #[serde(default)] pub name: Option<String>,
-    #[serde(default)] pub description: Option<String>,
+    // Part of the documented Frontmatter interface; not read internally yet.
+    #[serde(default)] #[allow(dead_code)] pub description: Option<String>,
     #[serde(default)] pub triggers: Vec<String>,
 }
 
 pub struct Skill {
-    pub root: PathBuf,
+    // Part of the documented Skill interface; not read internally yet.
+    #[allow(dead_code)] pub root: PathBuf,
     pub frontmatter: Option<Frontmatter>,
     pub frontmatter_error: Option<String>,
-    pub has_skill_md: bool,
+    #[allow(dead_code)] pub has_skill_md: bool,
     pub scripts: Vec<PathBuf>,
 }
 

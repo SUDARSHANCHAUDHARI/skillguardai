@@ -1,5 +1,5 @@
 use serde::Serialize;
-use crate::findings::{Finding, Severity};
+use crate::findings::Finding;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -25,6 +25,7 @@ pub fn score(findings: &[Finding], has_executable_scripts: bool) -> Score {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::findings::Severity;
     fn f(sev: Severity) -> Finding {
         Finding { rule_id: "x".into(), category: "c".into(), severity: sev,
             description: "d".into(), file: "f".into(), line: None, snippet: None }

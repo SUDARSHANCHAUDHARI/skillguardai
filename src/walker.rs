@@ -6,7 +6,12 @@ impl Default for WalkCaps {
     fn default() -> Self { Self { max_file_bytes: 1 << 20, max_total_bytes: 20 << 20, max_files: 2000 } }
 }
 
-pub struct TextFile { pub path: PathBuf, pub rel: String, pub content: String }
+pub struct TextFile {
+    // Part of the documented TextFile interface; not read internally yet.
+    #[allow(dead_code)] pub path: PathBuf,
+    pub rel: String,
+    pub content: String,
+}
 
 fn is_binary(bytes: &[u8]) -> bool { bytes.iter().take(8000).any(|&b| b == 0) }
 
