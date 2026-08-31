@@ -1,0 +1,41 @@
+[[rule]]
+id = "exfil-curl-pipe-sh"
+category = "data-exfiltration"
+severity = "critical"
+description = "Pipes a downloaded script straight into a shell"
+pattern = 'curl[^\n]*\|\s*(ba)?sh'
+
+[[rule]]
+id = "cred-ssh-read"
+category = "credential-access"
+severity = "high"
+description = "Reads an SSH private key"
+pattern = '~/\.ssh/id_'
+
+[[rule]]
+id = "exec-eval"
+category = "dangerous-exec"
+severity = "high"
+description = "Uses eval/exec to run dynamic code"
+pattern = '\b(eval|exec|os\.system)\s*\('
+
+[[rule]]
+id = "inject-ignore-previous"
+category = "prompt-injection"
+severity = "medium"
+description = "Attempts to override prior instructions"
+pattern = '(?i)ignore (all )?(previous|prior) instructions'
+
+[[rule]]
+id = "supply-remote-install"
+category = "supply-chain"
+severity = "medium"
+description = "Installs a package from a raw URL"
+pattern = '(pip install|npm install)[^\n]*https?://'
+
+[[rule]]
+id = "obfus-base64-pipe-sh"
+category = "obfuscation"
+severity = "high"
+description = "Decodes base64 and pipes it to a shell"
+pattern = 'base64\s+-d[^\n]*\|\s*(ba)?sh'
