@@ -22,7 +22,70 @@ pub fn parse_frontmatter(md: &str) -> Result<Frontmatter, String> {
     let s = md.strip_prefix('\u{feff}').unwrap_or(md);
     let rest = s.strip_prefix("---").ok_or("no frontmatter block")?;
     let end = rest.find("\n---").ok_or("unterminated frontmatter block")?;
-    serde_yaml::from_str::<Frontmatter>(&rest[..end]).map_err(|e| e.to_string())
+    let yaml = &rest[..end];
+    // Strict YAML first — it handles proper lists and multi-line values.
+    match serde_yaml::from_str::<Frontmatter>(yaml) {
+        Ok(fm) => Ok(fm),
+        // Real skill frontmatter is often fragile YAML — e.g. an unquoted description
+        // containing "Trigger: /x" (a colon-space) trips serde_yaml. Fall back to a
+        // lenient line scan for the fields we need; only report malformed when even that
+        // recovers nothing, so a scanner never chokes on a slightly-off-but-present manifest.
+        Err(e) => {
+            let fm = lenient_frontmatter(yaml);
+            if fm.name.is_none() && fm.description.is_none() && fm.triggers.is_empty() {
+                Err(e.to_string())
+            } else {
+                Ok(fm)
+            }
+        }
+    }
+}
+
+/// Tolerant top-level `key: value` extractor for the three fields we care about.
+/// Takes everything after the first `:` as the value, so colons inside a value are fine.
+fn lenient_frontmatter(yaml: &str) -> Frontmatter {
+    fn clean(v: &str) -> String {
+        v.trim().trim_matches('"').trim_matches('\'').to_string()
+    }
+    let mut fm = Frontmatter::default();
+    let mut lines = yaml.lines().peekable();
+    while let Some(line) = lines.next() {
+        // Only consider unindented top-level keys.
+        if line.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else { continue };
+        match key.trim() {
+            "name" => fm.name = Some(clean(value)),
+            "description" => fm.description = Some(clean(value)),
+            "triggers" => {
+                let inline = value.trim();
+                if inline.is_empty() {
+                    // Gather following "- item" list entries.
+                    while let Some(peek) = lines.peek() {
+                        let entry = peek.trim();
+                        if let Some(item) = entry.strip_prefix("- ") {
+                            fm.triggers.push(clean(item));
+                            lines.next();
+                        } else {
+                            break;
+                        }
+                    }
+                } else {
+                    // Inline form: "[a, b]" or "a, b" or a single value.
+                    let inline = inline.trim_start_matches('[').trim_end_matches(']');
+                    for part in inline.split(',') {
+                        let t = clean(part);
+                        if !t.is_empty() {
+                            fm.triggers.push(t);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    fm
 }
 
 fn is_script(path: &Path) -> bool {
@@ -67,5 +130,19 @@ mod tests {
         let md = "---\nname: x\ntriggers:\n  - \"*\"\n---\n";
         let fm = parse_frontmatter(md).unwrap();
         assert_eq!(fm.triggers, vec!["*".to_string()]);
+    }
+    #[test]
+    fn colon_in_description_recovers_via_lenient_fallback() {
+        // Strict YAML rejects the "Trigger: /x" colon-space; the fallback must recover.
+        let md = "---\nname: typescript-reviewer\ndescription: Review .ts files. Trigger: /typescript-reviewer or on any change.\ntools: Read, Bash\n---\n# body\n";
+        let fm = parse_frontmatter(md).unwrap();
+        assert_eq!(fm.name.as_deref(), Some("typescript-reviewer"));
+        assert!(fm.description.as_deref().unwrap().contains("Trigger: /typescript-reviewer"));
+    }
+    #[test]
+    fn unrecoverable_frontmatter_still_errors() {
+        // A block with no recoverable known keys is still reported malformed.
+        let md = "---\n: : : garbage\n\t- broken\n---\n# body\n";
+        assert!(parse_frontmatter(md).is_err());
     }
 }
