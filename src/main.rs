@@ -5,5 +5,6 @@ mod skill;
 mod walker;
 mod engine;
 mod report;
+mod cli;
 
-fn main() {}
+fn main() { std::process::exit(cli::run()); }
