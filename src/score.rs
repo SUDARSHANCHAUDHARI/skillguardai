@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::HashSet;
 use crate::findings::Finding;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -9,7 +10,13 @@ pub enum Band { Low, Medium, High, Critical }
 pub struct Score { pub value: u32, pub band: Band, pub exit_code: i32 }
 
 pub fn score(findings: &[Finding], has_executable_scripts: bool) -> Score {
-    let mut subtotal: f64 = findings.iter().map(|f| f.severity.points() as f64).sum();
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut subtotal: f64 = 0.0;
+    for f in findings {
+        if seen.insert(f.rule_id.as_str()) {
+            subtotal += f.severity.points() as f64;
+        }
+    }
     if has_executable_scripts { subtotal *= 1.3; }
     let value = subtotal.round().min(100.0) as u32;
     let band = match value {
@@ -27,7 +34,10 @@ mod tests {
     use super::*;
     use crate::findings::Severity;
     fn f(sev: Severity) -> Finding {
-        Finding { rule_id: "x".into(), category: "c".into(), severity: sev,
+        f_id("x", sev)
+    }
+    fn f_id(rule_id: &str, sev: Severity) -> Finding {
+        Finding { rule_id: rule_id.into(), category: "c".into(), severity: sev,
             description: "d".into(), file: "f".into(), line: None, snippet: None }
     }
     #[test]
@@ -53,9 +63,18 @@ mod tests {
     }
     #[test]
     fn score_is_clamped_to_100() {
-        let many = vec![f(Severity::Critical); 5]; // 250 * 1.3 -> clamp 100
+        let many: Vec<Finding> = (0..5)
+            .map(|i| f_id(&format!("c{i}"), Severity::Critical))
+            .collect(); // 5 distinct rules * 50 = 250 * 1.3 -> clamp 100
         let s = score(&many, true);
         assert_eq!(s.value, 100);
         assert_eq!(s.band, Band::Critical);
+    }
+    #[test]
+    fn duplicate_rule_id_counts_once() {
+        let dups = vec![f_id("dup", Severity::High); 3]; // same rule_id, 3 line-hits
+        let s = score(&dups, false);
+        assert_eq!(s.value, 25);
+        assert_eq!(s.band, Band::Medium);
     }
 }

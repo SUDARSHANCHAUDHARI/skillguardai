@@ -45,15 +45,21 @@ pub fn run() -> i32 {
         Command::Scan { path, all, json } => {
             let targets = if all { subdirs_with_skill(&path) } else { vec![path.clone()] };
             let mut reports = Vec::new();
+            let mut had_error = false;
             for t in targets {
                 match scan_one(&t, &rules) {
                     Ok(r) => reports.push(r),
-                    Err(e) => { eprintln!("error scanning {}: {e}", t.display()); return 2; }
+                    Err(e) => {
+                        eprintln!("error scanning {}: {e}", t.display());
+                        if !all { return 2; }
+                        had_error = true;
+                    }
                 }
             }
             if json { println!("{}", report::to_json(&reports)); }
             else { report::print_terminal(&reports); }
-            reports.iter().map(|r| r.score.exit_code).max().unwrap_or(0)
+            let worst = reports.iter().map(|r| r.score.exit_code).max().unwrap_or(0);
+            worst.max(if had_error { 2 } else { 0 })
         }
     }
 }
