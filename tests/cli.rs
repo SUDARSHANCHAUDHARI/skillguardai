@@ -65,3 +65,21 @@ fn obfus_fixture_flags_obfuscation() {
 fn trigger_fixture_flags_excessive_trigger() {
     assert_category_flagged("trigger", "excessive-trigger");
 }
+
+#[test]
+fn baseline_suppresses_finding_and_flips_exit() {
+    // Without a baseline, exfil exits 1. A baseline suppressing its rule flips it to 0.
+    let dir = tempfile::tempdir().unwrap();
+    let baseline = dir.path().join("bl.toml");
+    std::fs::write(
+        &baseline,
+        "[[suppress]]\nrule_id = \"exfil-curl-pipe-sh\"\nreason = \"test\"\n",
+    )
+    .unwrap();
+    Command::cargo_bin("skillguardai")
+        .unwrap()
+        .args(["scan", "tests/fixtures/exfil", "--baseline"])
+        .arg(&baseline)
+        .assert()
+        .success();
+}

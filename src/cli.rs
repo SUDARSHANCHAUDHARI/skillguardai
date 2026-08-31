@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
-use crate::{engine, report, rules::RulePack, score, skill, walker};
+use crate::{baseline::Baseline, engine, report, rules::RulePack, score, skill, walker};
+use crate::baseline;
 use crate::walker::WalkCaps;
 use crate::report::SkillReport;
 
@@ -15,17 +16,40 @@ enum Command {
         path: PathBuf,
         #[arg(long)] all: bool,
         #[arg(long)] json: bool,
+        /// Suppress known findings listed in a baseline TOML file. If omitted, a
+        /// `.skillguardai-baseline.toml` in the scanned directory is used when present.
+        #[arg(long, value_name = "FILE")]
+        baseline: Option<PathBuf>,
     },
 }
 
-fn scan_one(root: &Path, rules: &RulePack) -> anyhow::Result<SkillReport> {
+/// Scan one skill, dropping any findings the baseline suppresses BEFORE scoring.
+/// Returns the report and the number of findings suppressed.
+fn scan_one(root: &Path, rules: &RulePack, baseline: &Baseline) -> anyhow::Result<(SkillReport, usize)> {
     let files = walker::collect_text_files(root, &WalkCaps::default())?;
     let sk = skill::load(root);
     let res = engine::scan(&sk, &files, rules);
-    let sc = score::score(&res.findings, res.has_executable_scripts);
     let name = sk.frontmatter.as_ref().and_then(|f| f.name.clone())
         .unwrap_or_else(|| root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
-    Ok(SkillReport { skill: name, score: sc, findings: res.findings, has_executable_scripts: res.has_executable_scripts })
+    let before = res.findings.len();
+    let mut findings = res.findings;
+    findings.retain(|f| !baseline.suppresses(&name, f));
+    let suppressed = before - findings.len();
+    let sc = score::score(&findings, res.has_executable_scripts);
+    Ok((SkillReport { skill: name, score: sc, findings, has_executable_scripts: res.has_executable_scripts }, suppressed))
+}
+
+/// Resolve the baseline: explicit `--baseline` wins; otherwise auto-load
+/// `.skillguardai-baseline.toml` from the scan directory when it exists.
+fn resolve_baseline(path: &Path, explicit: Option<PathBuf>) -> anyhow::Result<Baseline> {
+    if let Some(p) = explicit {
+        return Baseline::load(&p);
+    }
+    let auto = path.join(baseline::DEFAULT_FILENAME);
+    if auto.is_file() {
+        return Baseline::load(&auto);
+    }
+    Ok(Baseline::default())
 }
 
 fn subdirs_with_skill(root: &Path) -> Vec<PathBuf> {
@@ -42,13 +66,18 @@ pub fn run() -> i32 {
         Err(e) => { eprintln!("error: {e}"); return 2; }
     };
     match cli.command {
-        Command::Scan { path, all, json } => {
+        Command::Scan { path, all, json, baseline } => {
+            let baseline = match resolve_baseline(&path, baseline) {
+                Ok(b) => b,
+                Err(e) => { eprintln!("error: {e}"); return 2; }
+            };
             let targets = if all { subdirs_with_skill(&path) } else { vec![path.clone()] };
             let mut reports = Vec::new();
             let mut had_error = false;
+            let mut suppressed_total = 0usize;
             for t in targets {
-                match scan_one(&t, &rules) {
-                    Ok(r) => reports.push(r),
+                match scan_one(&t, &rules, &baseline) {
+                    Ok((r, suppressed)) => { suppressed_total += suppressed; reports.push(r); }
                     Err(e) => {
                         eprintln!("error scanning {}: {e}", t.display());
                         if !all { return 2; }
@@ -58,6 +87,9 @@ pub fn run() -> i32 {
             }
             if json { println!("{}", report::to_json(&reports)); }
             else { report::print_terminal(&reports); }
+            if suppressed_total > 0 {
+                eprintln!("({suppressed_total} finding(s) suppressed by baseline)");
+            }
             let worst = reports.iter().map(|r| r.score.exit_code).max().unwrap_or(0);
             worst.max(if had_error { 2 } else { 0 })
         }

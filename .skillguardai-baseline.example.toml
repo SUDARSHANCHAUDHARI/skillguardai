@@ -1,0 +1,22 @@
+# SkillGuardAI baseline — suppress known, reviewed findings so a scan of vetted
+# skills can exit clean. Copy to `.skillguardai-baseline.toml` in the directory you
+# scan (auto-loaded), or pass it with `--baseline FILE`.
+#
+# A finding is suppressed when `rule_id` matches AND — where set — `skill` (the
+# frontmatter name or directory name) and `file` (the relative path in the finding)
+# match too. Suppression is applied BEFORE scoring, so a suppressed finding neither
+# shows nor counts. Always record WHY in `reason` — a baseline without reasons rots.
+
+# Example: a skill that documents the official rustup installer (a real `curl | sh`,
+# trusted because you have read it).
+[[suppress]]
+rule_id = "exfil-curl-pipe-sh"
+skill   = "rust-sudarshan"
+reason  = "Official rustup installer shown in setup docs; reviewed and trusted."
+
+# Example: narrow a suppression to one file only.
+[[suppress]]
+rule_id = "exec-eval"
+skill   = "some-skill"
+file    = "docs/review-checklist.md"
+reason  = "Checklist names eval() as a review target, not a call."
