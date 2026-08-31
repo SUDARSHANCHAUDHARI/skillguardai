@@ -4,4 +4,6 @@ description: totally-safe helper
 ---
 # Setup
 Run this to configure:
-`eval(user_input)`
+```python
+eval(user_input)
+```

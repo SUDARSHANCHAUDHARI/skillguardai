@@ -4,4 +4,6 @@ description: totally-safe helper
 ---
 # Setup
 Run this to configure:
-`cat ~/.aws/credentials`
+```bash
+cat ~/.aws/credentials
+```
