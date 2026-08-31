@@ -26,6 +26,9 @@ skillguardai scan <path> --all
 
 # Emit machine-readable JSON instead of the terminal report
 skillguardai scan <path> --json
+
+# Suppress reviewed, known-benign findings via a baseline file
+skillguardai scan <path> --all --baseline .skillguardai-baseline.toml
 ```
 
 Example:
@@ -79,6 +82,36 @@ skill ships any executable script (`.sh`, `.bash`, `.py`, `.js`, `.ts`, `.rb`,
 With `--all`, the worst verdict across all scanned skills drives the process
 exit code.
 
+## Baseline suppression
+
+Real, vetted skills often contain patterns that are genuine but benign — a
+documented `curl | sh` installer, a review checklist that names `eval()` as a
+thing to look for. A **baseline file** records these so a scan of trusted skills
+exits clean, without weakening detection for everything else.
+
+```toml
+# .skillguardai-baseline.toml
+[[suppress]]
+rule_id = "exfil-curl-pipe-sh"
+skill   = "rust-sudarshan"          # optional: limit to one skill
+reason  = "Official rustup installer, reviewed and trusted."
+
+[[suppress]]
+rule_id = "exec-eval"
+file    = "docs/review-checklist.md" # optional: limit to one file
+reason  = "Checklist names eval() as a review target, not a call."
+```
+
+A finding is suppressed when `rule_id` matches and — where set — the `skill`
+(frontmatter or directory name) and `file` (relative path) match too.
+Suppression is applied **before scoring**, so a suppressed finding neither shows
+nor counts. Pass a baseline with `--baseline FILE`, or drop a
+`.skillguardai-baseline.toml` into the scanned directory to have it auto-loaded.
+See [`.skillguardai-baseline.example.toml`](.skillguardai-baseline.example.toml).
+
+Always fill in `reason` — an undocumented suppression is how a real finding
+later hides in plain sight.
+
 ## Trust model
 
 - **Static only.** SkillGuardAI never executes, imports, or evaluates any
@@ -87,12 +120,19 @@ exit code.
 - **No network calls.** The binary makes no outbound requests of any kind;
   the rule pack is embedded at compile time via `include_str!`.
 - **Fail-closed limits.** Scans fail with exit code 2 (rather than silently
-  skipping content) if a file exceeds 1 MiB, the bundle exceeds 20 MiB total,
-  or the directory contains more than 2000 files.
-- Rule-based detection has known limits: it can both miss disguised attacks
-  and flag benign content that merely *describes* a risky pattern (e.g. a
-  security-review skill's own documentation). Treat a HIGH/CRITICAL verdict
-  as a prompt for human review, not a guarantee of malice.
+  skipping content) if a *text* file exceeds 1 MiB, the bundle exceeds 20 MiB
+  total, or the directory contains more than 2000 files. Binary/media assets
+  (video, images, fonts, archives, compiled objects) are skipped by extension
+  and never count toward these limits — they are not text a scanner reads.
+- **Mention vs. use.** Inside Markdown/plain-text docs, a match that falls
+  within an inline-code span (`` `eval()` ``) is treated as a mention and
+  suppressed — but only there. Matches inside fenced ``` code blocks and in
+  real code files (`.py`, `.sh`, …) are always kept, because that is where a
+  real payload would live.
+- Rule-based detection still has limits: it can miss disguised attacks and
+  flag benign content that describes a risky pattern in prose. Treat a
+  HIGH/CRITICAL verdict as a prompt for human review, not a guarantee of
+  malice, and record vetted exceptions in a baseline file.
 
 ## Development
 
