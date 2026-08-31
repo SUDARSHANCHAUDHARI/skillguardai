@@ -1,9 +1,35 @@
+# SkillGuardAI default rule pack
+# Categories: data-exfiltration, credential-access, dangerous-exec,
+# prompt-injection, supply-chain, obfuscation
+# (excessive-trigger is a structural check in src/engine.rs, not a regex rule.)
+
 [[rule]]
 id = "exfil-curl-pipe-sh"
 category = "data-exfiltration"
 severity = "critical"
 description = "Pipes a downloaded script straight into a shell"
 pattern = 'curl[^\n]*\|\s*(ba)?sh'
+
+[[rule]]
+id = "exfil-post-file"
+category = "data-exfiltration"
+severity = "high"
+description = "POSTs local file contents to a remote URL"
+pattern = '(?i)(curl|wget)[^\n]*(--data|-d|--upload-file)[^\n]*https?://'
+
+[[rule]]
+id = "exfil-dns-exfil"
+category = "data-exfiltration"
+severity = "medium"
+description = "Uses DNS lookups to smuggle data out via subdomain queries"
+pattern = '(?i)(nslookup|dig)\s+[^\n]*\$\{?\w'
+
+[[rule]]
+id = "exfil-webhook-post"
+category = "data-exfiltration"
+severity = "medium"
+description = "Sends data to a generic webhook/collector endpoint"
+pattern = '(?i)https?://(webhook\.site|requestbin\.com|hookbin\.com)/'
 
 [[rule]]
 id = "cred-ssh-read"
@@ -13,11 +39,60 @@ description = "Reads an SSH private key"
 pattern = '~/\.ssh/id_'
 
 [[rule]]
+id = "cred-env-read"
+category = "credential-access"
+severity = "medium"
+description = "Reads a .env secrets file"
+pattern = '(cat|source|read)[^\n]*\.env\b'
+
+[[rule]]
+id = "cred-aws-read"
+category = "credential-access"
+severity = "high"
+description = "Reads AWS credentials"
+pattern = '~/\.aws/credentials'
+
+[[rule]]
+id = "cred-netrc-read"
+category = "credential-access"
+severity = "high"
+description = "Reads stored network credentials from .netrc"
+pattern = '~/\.netrc'
+
+[[rule]]
+id = "cred-browser-cookie"
+category = "credential-access"
+severity = "high"
+description = "Reads browser cookie storage"
+pattern = '(?i)(Login Data|Cookies)[^\n]*(Chrome|Firefox|Safari)'
+
+[[rule]]
 id = "exec-eval"
 category = "dangerous-exec"
 severity = "high"
 description = "Uses eval/exec to run dynamic code"
 pattern = '\b(eval|exec|os\.system)\s*\('
+
+[[rule]]
+id = "exec-backtick-shell"
+category = "dangerous-exec"
+severity = "medium"
+description = "Runs a shell command via subprocess"
+pattern = '(subprocess\.(run|Popen|call)|child_process\.exec)'
+
+[[rule]]
+id = "exec-remote-code-exec"
+category = "dangerous-exec"
+severity = "critical"
+description = "Executes code fetched directly from a remote URL"
+pattern = '(?i)exec\s*\(\s*(requests|urllib|fetch)[^\n]*\)'
+
+[[rule]]
+id = "exec-powershell-encoded"
+category = "dangerous-exec"
+severity = "high"
+description = "Runs an encoded/obfuscated PowerShell command"
+pattern = '(?i)powershell[^\n]*-(enc|encodedcommand)\b'
 
 [[rule]]
 id = "inject-ignore-previous"
@@ -27,6 +102,27 @@ description = "Attempts to override prior instructions"
 pattern = '(?i)ignore (all )?(previous|prior) instructions'
 
 [[rule]]
+id = "inject-system-prompt-leak"
+category = "prompt-injection"
+severity = "medium"
+description = "Attempts to reveal the system prompt"
+pattern = '(?i)(print|reveal|repeat)[^\n]*(system prompt|your instructions)'
+
+[[rule]]
+id = "inject-role-override"
+category = "prompt-injection"
+severity = "high"
+description = "Attempts to jailbreak via a fake persona / restriction removal"
+pattern = '(?i)(you are now|act as if you have no)[^\n]*(restrictions|rules|filters)'
+
+[[rule]]
+id = "inject-hidden-unicode"
+category = "prompt-injection"
+severity = "low"
+description = "Contains zero-width or invisible unicode characters, often used to hide injected text"
+pattern = '[​‌‍﻿]'
+
+[[rule]]
 id = "supply-remote-install"
 category = "supply-chain"
 severity = "medium"
@@ -34,8 +130,50 @@ description = "Installs a package from a raw URL"
 pattern = '(pip install|npm install)[^\n]*https?://'
 
 [[rule]]
+id = "supply-pip-git"
+category = "supply-chain"
+severity = "medium"
+description = "Installs a Python package directly from a git repository"
+pattern = 'pip install[^\n]*git\+'
+
+[[rule]]
+id = "supply-curl-to-cargo"
+category = "supply-chain"
+severity = "high"
+description = "Downloads and pipes an installer script into cargo/sh"
+pattern = 'curl[^\n]*\|[^\n]*(cargo|sh)\s+install'
+
+[[rule]]
+id = "supply-unpinned-git-dep"
+category = "supply-chain"
+severity = "low"
+description = "Installs an npm dependency straight from a git ref without pinning a version"
+pattern = 'npm install[^\n]*git\+https?://'
+
+[[rule]]
 id = "obfus-base64-pipe-sh"
 category = "obfuscation"
 severity = "high"
 description = "Decodes base64 and pipes it to a shell"
 pattern = 'base64\s+-d[^\n]*\|\s*(ba)?sh'
+
+[[rule]]
+id = "obfus-long-base64"
+category = "obfuscation"
+severity = "low"
+description = "Contains a long base64 blob"
+pattern = '[A-Za-z0-9+/]{120,}={0,2}'
+
+[[rule]]
+id = "obfus-hex-escape"
+category = "obfuscation"
+severity = "low"
+description = "Contains a long run of hex-escaped characters, often used to hide a payload"
+pattern = '(\\x[0-9a-fA-F]{2}){10,}'
+
+[[rule]]
+id = "obfus-eval-atob"
+category = "obfuscation"
+severity = "high"
+description = "Decodes a base64 string and evaluates it as JavaScript"
+pattern = 'eval\s*\(\s*atob\s*\('

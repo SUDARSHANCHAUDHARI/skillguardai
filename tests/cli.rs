@@ -22,3 +22,46 @@ fn json_output_is_valid_json() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(v.is_array());
 }
+
+fn assert_category_flagged(fixture: &str, category: &str) {
+    let out = Command::cargo_bin("skillguardai").unwrap()
+        .args(["scan", &format!("tests/fixtures/{fixture}"), "--json"])
+        .output().unwrap();
+    let body = String::from_utf8(out.stdout).unwrap();
+    assert!(body.contains(category), "expected category '{category}' in output for fixture '{fixture}':\n{body}");
+}
+
+#[test]
+fn exfil_fixture_flags_data_exfiltration() {
+    assert_category_flagged("exfil", "data-exfiltration");
+}
+
+#[test]
+fn cred_fixture_flags_credential_access() {
+    assert_category_flagged("cred", "credential-access");
+}
+
+#[test]
+fn exec_fixture_flags_dangerous_exec() {
+    assert_category_flagged("exec", "dangerous-exec");
+}
+
+#[test]
+fn inject_fixture_flags_prompt_injection() {
+    assert_category_flagged("inject", "prompt-injection");
+}
+
+#[test]
+fn supply_fixture_flags_supply_chain() {
+    assert_category_flagged("supply", "supply-chain");
+}
+
+#[test]
+fn obfus_fixture_flags_obfuscation() {
+    assert_category_flagged("obfus", "obfuscation");
+}
+
+#[test]
+fn trigger_fixture_flags_excessive_trigger() {
+    assert_category_flagged("trigger", "excessive-trigger");
+}
