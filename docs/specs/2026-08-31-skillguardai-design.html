@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SkillGuardAI — Design Spec</title>
+<style>
+  :root{
+    --bg:#0f1117; --surface:#1a1d27; --border:#2d3148; --accent:#7c6cfc;
+    --text:#e8e9f0; --muted:#8a8fa8; --green:#3fb950; --yellow:#d29922; --red:#f85149;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{background:#000;padding:32px 24px;border-bottom:1px solid var(--border)}
+  header h1{margin:0 0 8px;font-size:28px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .chip{background:var(--surface);border:1px solid var(--border);color:var(--muted);
+        padding:4px 10px;border-radius:20px;font-size:12px}
+  nav{position:sticky;top:0;background:rgba(15,17,23,.92);backdrop-filter:blur(6px);
+      border-bottom:1px solid var(--border);padding:10px 24px;display:flex;gap:16px;flex-wrap:wrap;z-index:10}
+  nav a{color:var(--muted);text-decoration:none;font-size:13px}
+  nav a:hover{color:var(--accent)}
+  main{max-width:900px;margin:0 auto;padding:24px}
+  section{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+          padding:20px 24px;margin:18px 0}
+  h2{margin-top:0;font-size:20px;border-bottom:1px solid var(--border);padding-bottom:8px}
+  h3{font-size:15px;color:var(--accent);margin:18px 0 6px}
+  code{background:#000;padding:2px 6px;border-radius:5px;font-size:13px;color:#c9d1e8}
+  pre{background:#000;border:1px solid var(--border);border-radius:8px;padding:14px;overflow-x:auto}
+  pre code{background:none;padding:0}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--border);padding:8px 10px;text-align:left}
+  th{background:#000;color:var(--muted)}
+  .b{font-weight:600}
+  .sev-crit{color:var(--red)} .sev-high{color:#ff8a5c} .sev-med{color:var(--yellow)} .sev-low{color:var(--green)}
+  ul{margin:6px 0}
+  .no{color:var(--muted)}
+  .no li::marker{content:"✗ "}
+  footer{color:var(--muted);text-align:center;padding:24px;font-size:12px}
+  @media (prefers-color-scheme: light){
+    :root{--bg:#f5f6fa;--surface:#fff;--border:#dfe2ec;--text:#1a1d27;--muted:#5a6072}
+    header{background:#1a1d27;color:#fff}
+    code,pre{background:#1a1d27;color:#e8e9f0}
+    th{background:#eef0f6;color:#5a6072}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>SkillGuardAI</h1>
+  <div class="no" style="color:#8a8fa8">Static security scanner for AI-agent skills &amp; plugins</div>
+  <div class="chips">
+    <span class="chip">Type: new project</span>
+    <span class="chip">Rust · single binary</span>
+    <span class="chip">Static · no-egress</span>
+    <span class="chip">v1 · personal-first</span>
+    <span class="chip">2026-08-31</span>
+    <span class="chip">Status: approved</span>
+  </div>
+</header>
+
+<nav>
+  <a href="#purpose">Purpose</a>
+  <a href="#scope">Scope</a>
+  <a href="#arch">Architecture</a>
+  <a href="#flow">Data Flow</a>
+  <a href="#score">Scoring</a>
+  <a href="#errors">Errors</a>
+  <a href="#test">Testing</a>
+</nav>
+
+<main>
+<section id="purpose">
+  <h2>1 · Purpose</h2>
+  <p>A <span class="b">static security scanner for AI-agent skills and plugins</span> — the
+  <code>SKILL.md</code> + script bundles that Claude Code and similar agents install and run.
+  It answers one question before you trust a skill: <span class="b">is this safe to install?</span></p>
+  <p>v1 is a <span class="b">personal hardening tool</span> — point it at your own
+  <code>~/.claude/skills</code>, <code>~/.agents/hooks</code>, or an unvetted plugin. It
+  <span class="b">never executes</span> the skill and makes <span class="b">no network calls</span>.
+  Structured to graduate into a publishable CLI later without a rewrite.</p>
+  <h3>Non-goals (v1)</h3>
+  <ul class="no"><li>No skill execution, ever</li><li>No network (no CVE lookups, no LLM)</li>
+  <li>Not a fork of NVIDIA/skillspector — shared concept, independent code</li></ul>
+</section>
+
+<section id="scope">
+  <h2>2 · Scope</h2>
+  <h3>In scope (v1)</h3>
+  <ul>
+    <li>Scan one skill dir: <code>skillguardai scan &lt;path&gt;</code></li>
+    <li>Batch scan a folder: <code>skillguardai scan &lt;dir&gt; --all</code></li>
+    <li>Parse <code>SKILL.md</code> frontmatter (name, description, triggers)</li>
+    <li>Data-driven TOML rule pack across 7 categories</li>
+    <li>2 structural checks (trigger breadth, executable-script presence)</li>
+    <li>Weighted score 0–100 → verdict band → decision-shaped exit code</li>
+    <li>Terminal (default) + <code>--json</code> output; fail-closed input handling</li>
+  </ul>
+  <h3>Deferred to v2 (YAGNI now)</h3>
+  <ul class="no">
+    <li>LLM semantic stage · OSV.dev/CVE · SARIF</li>
+    <li>MCP-server mode · Python AST + taint tracking</li>
+    <li>Unicode-confusable detection · baseline suppression files</li>
+  </ul>
+</section>
+
+<section id="arch">
+  <h2>3 · Architecture</h2>
+  <h3>Crate layout</h3>
+<pre><code>skillguardai/
+  Cargo.toml
+  rules/default.toml        # rule pack — DATA, not code
+  src/
+    main.rs / cli.rs        # scan; --all; --json
+    walker.rs               # safe walk + size caps (fail-closed)
+    skill.rs                # parse SKILL.md; locate scripts
+    rules.rs                # load/represent the TOML rule pack
+    engine.rs               # apply rules + structural checks -> findings
+    findings.rs             # Finding / Severity / Category
+    score.rs                # score -> verdict -> exit code (pure)
+    report.rs               # terminal + JSON (pure)
+  tests/fixtures/           # clean + malicious sample skills</code></pre>
+
+  <h3>Two-layer detection</h3>
+  <p><span class="b">Layer 1 — Rule pack (TOML, data).</span> Add a detection = edit TOML, no recompile:</p>
+<pre><code>[[rule]]
+id          = "exfil-curl-pipe-sh"
+category    = "data-exfiltration"
+severity    = "critical"
+description = "Pipes a downloaded script straight into a shell"
+pattern     = 'curl[^\n]*\|\s*(ba)?sh'</code></pre>
+  <p><span class="b">Layer 2 — Structural checks (Rust).</span> Trigger breadth
+  (<code>*</code>/empty/<code>.*</code> → excessive-trigger finding) and executable-script
+  presence (sets the score multiplier + a note).</p>
+
+  <h3>Seed categories (~20–25 rules)</h3>
+  <table>
+    <tr><th>Category</th><th>Example detections</th></tr>
+    <tr><td><code>prompt-injection</code></td><td>"ignore previous instructions", role-override</td></tr>
+    <tr><td><code>data-exfiltration</code></td><td><code>curl … | sh</code>, POST file contents to remote</td></tr>
+    <tr><td><code>credential-access</code></td><td>reads of <code>~/.ssh/id_*</code>, <code>.env</code>, <code>~/.aws</code>, keychains</td></tr>
+    <tr><td><code>dangerous-exec</code></td><td><code>eval</code>, <code>exec</code>, <code>os.system</code>, backtick shell-out</td></tr>
+    <tr><td><code>supply-chain</code></td><td><code>npm/pip install</code> from raw URL or git ref</td></tr>
+    <tr><td><code>excessive-trigger</code></td><td>overly broad activation (fed by structural check)</td></tr>
+    <tr><td><code>obfuscation</code></td><td>large base64/hex blobs, <code>base64 -d | sh</code></td></tr>
+  </table>
+</section>
+
+<section id="flow">
+  <h2>4 · Data Flow</h2>
+<pre><code>scan &lt;dir&gt; [--all] [--json]
+   → [walker]  enumerate + caps + skip binaries  --oversize/unreadable--> ERROR (exit 2)
+   → [skill]   parse SKILL.md frontmatter; collect scripts
+   → [engine]  rule-pack patterns per file + structural checks
+   → [score]   Σ weighted severities × script multiplier → 0..100 → band → exit
+   → [report]  terminal (default) or JSON</code></pre>
+  <p><code>--all</code> runs the flow per subdirectory containing a <code>SKILL.md</code>; the
+  worst verdict drives the process exit code.</p>
+</section>
+
+<section id="score">
+  <h2>5 · Scoring &amp; Verdict</h2>
+  <table>
+    <tr><th>Severity</th><th>Points</th></tr>
+    <tr><td class="sev-crit b">CRITICAL</td><td>+50</td></tr>
+    <tr><td class="sev-high b">HIGH</td><td>+25</td></tr>
+    <tr><td class="sev-med b">MEDIUM</td><td>+10</td></tr>
+    <tr><td class="sev-low b">LOW</td><td>+5</td></tr>
+  </table>
+  <p>Subtotal <span class="b">× 1.3</span> if the bundle ships any executable script; clamped to 100.</p>
+  <table>
+    <tr><th>Band</th><th>Score</th><th>Meaning</th><th>Exit</th></tr>
+    <tr><td class="sev-low">LOW</td><td>0–20</td><td>Looks safe</td><td>0</td></tr>
+    <tr><td class="sev-med">MEDIUM</td><td>21–50</td><td>Caution — review</td><td>0</td></tr>
+    <tr><td class="sev-high">HIGH</td><td>51–80</td><td>Do not trust as-is</td><td>1</td></tr>
+    <tr><td class="sev-crit">CRITICAL</td><td>81–100</td><td>Do not install</td><td>1</td></tr>
+    <tr><td class="no">error</td><td>—</td><td>Scan error</td><td>2</td></tr>
+  </table>
+</section>
+
+<section id="errors">
+  <h2>6 · Error Handling (fail-closed)</h2>
+  <ul>
+    <li><span class="b">Oversized input</span> (file 1 MiB / bundle 20 MiB / 2000 files caps) → error, exit 2. Never treat un-scannable as safe.</li>
+    <li><span class="b">Unreadable files</span> → error finding, not a silent skip.</li>
+    <li><span class="b">Malformed frontmatter</span> → warning finding, keep scanning contents.</li>
+    <li><span class="b">Missing SKILL.md</span> → still scan scripts, note absence.</li>
+    <li><span class="b">Binary files</span> → skipped by walker.</li>
+  </ul>
+</section>
+
+<section id="test">
+  <h2>7 · Testing (TDD)</h2>
+  <ul>
+    <li><code>tests/fixtures/</code>: one clean skill (LOW, exit 0) + one malicious per category (HIGH/CRIT, exit 1).</li>
+    <li>Write fixture + expected verdict <span class="b">first</span>, then the rule/check that passes it.</li>
+    <li>Pure modules (<code>score</code>, <code>report</code>) unit-tested; integration test runs the real binary against fixtures.</li>
+  </ul>
+</section>
+</main>
+
+<footer>SkillGuardAI design spec · generated 2026-08-31 · companion to
+<code>2026-08-31-skillguardai-design.md</code></footer>
+</body>
+</html>
