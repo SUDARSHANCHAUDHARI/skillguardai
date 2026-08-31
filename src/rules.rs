@@ -65,6 +65,17 @@ mod tests {
         assert!(!r.regex.is_match("echo hello"));
     }
     #[test]
+    fn exec_eval_matches_calls_not_prose() {
+        let pack = RulePack::load_default().unwrap();
+        let r = pack.rules.iter().find(|r| r.id == "exec-eval").unwrap();
+        // Real calls (no space before the paren) still match.
+        assert!(r.regex.is_match("result = eval(user_input)"));
+        assert!(r.regex.is_match("os.system(cmd)"));
+        // Prose where "eval" is followed by a space then a parenthetical must NOT match.
+        assert!(!r.regex.is_match("## Choosing with an eval (don't guess)"));
+        assert!(!r.regex.is_match("run an eval (a scored check)"));
+    }
+    #[test]
     fn bad_regex_is_reported_with_rule_id() {
         let err = RulePack::from_toml_str(
             "[[rule]]\nid=\"bad\"\ncategory=\"c\"\nseverity=\"low\"\ndescription=\"d\"\npattern=\"(\"\n"

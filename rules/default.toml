@@ -71,7 +71,9 @@ id = "exec-eval"
 category = "dangerous-exec"
 severity = "high"
 description = "Uses eval/exec to run dynamic code"
-pattern = '\b(eval|exec|os\.system)\s*\('
+# `(` must immediately follow the identifier: real calls are `eval(`, while prose
+# like "an eval (don't guess)" has a space — requiring no space kills that false positive.
+pattern = '\b(eval|exec|os\.system)\('
 
 [[rule]]
 id = "exec-backtick-shell"
