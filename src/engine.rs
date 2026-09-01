@@ -162,6 +162,8 @@ pub fn scan(skill: &Skill, files: &[TextFile], rules: &RulePack) -> ScanResult {
                 });
             }
         }
+        // Python dynamic-execution analysis (no-op for non-.py files).
+        findings.extend(crate::taint::analyze_python(&f.rel, &f.content));
     }
 
     if let Some(fm) = &skill.frontmatter {
