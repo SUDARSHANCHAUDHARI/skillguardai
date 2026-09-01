@@ -67,6 +67,19 @@ fn trigger_fixture_flags_excessive_trigger() {
 }
 
 #[test]
+fn sarif_format_emits_valid_sarif() {
+    let out = Command::cargo_bin("skillguardai")
+        .unwrap()
+        .args(["scan", "tests/fixtures/exfil", "--format", "sarif"])
+        .output()
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["version"], "2.1.0");
+    assert_eq!(v["runs"][0]["tool"]["driver"]["name"], "SkillGuardAI");
+    assert!(!v["runs"][0]["results"].as_array().unwrap().is_empty());
+}
+
+#[test]
 fn baseline_suppresses_finding_and_flips_exit() {
     // Without a baseline, exfil exits 1. A baseline suppressing its rule flips it to 0.
     let dir = tempfile::tempdir().unwrap();
