@@ -45,12 +45,15 @@ publishes agent skills and wants a fast, deterministic answer to "is this safe?"
 ## Features
 
 - Scan a single skill directory, or every skill under a directory with `--all`.
-- Terminal report by default; machine-readable JSON with `--json` for CI and automation.
-- 25 pattern rules across six categories in an embedded rule pack, plus structural checks.
+- Output as a terminal report, JSON, or **SARIF 2.1.0** (`--format terminal|json|sarif`) for CI / GitHub code scanning.
+- Pattern rules across six categories in an embedded rule pack, plus structural checks.
+- **Unicode-confusable & hidden-character detection**: zero-width / bidi ("Trojan Source") characters and Latin↔Cyrillic/Greek homoglyphs.
+- **Python dynamic-execution analysis**: distinguishes dangerous sinks fed dynamic input (`eval(user_input)`) from harmless literals, and flags `shell=True` and unsafe deserialization.
 - Risk score (0–100) → severity band → decision-shaped process exit code.
 - Distinct-rule scoring: a pattern repeated across many lines counts once, not many times.
-- Mention-vs-use awareness: matches inside Markdown inline-code spans are treated as documentation, while fenced code blocks and real code files stay fully flagged.
+- Mention-vs-use awareness: matches inside Markdown inline-code spans (and blocklist/allowlist lines) are treated as documentation, while fenced code blocks and real code files stay fully flagged.
 - Baseline suppression: acknowledge reviewed, benign findings so a scan of trusted skills exits clean.
+- **MCP server mode** (`skillguardai mcp`): expose a `scan_skill` tool over stdio for runtime guardrails.
 - Fail-closed limits and binary/media asset skipping, so large demo assets never derail a scan.
 - Static and offline by design: no skill is ever executed and no network request is ever made.
 
@@ -91,12 +94,18 @@ skillguardai scan <path>
 # Scan every subdirectory of <path> that contains a SKILL.md
 skillguardai scan <path> --all
 
-# Emit machine-readable JSON instead of the terminal report
-skillguardai scan <path> --json
+# Choose an output format: terminal (default), json, or sarif
+skillguardai scan <path> --format json
+skillguardai scan <path> --all --format sarif > results.sarif
 
 # Suppress reviewed, known-benign findings via a baseline file
 skillguardai scan <path> --all --baseline .skillguardai-baseline.toml
+
+# Run as an MCP server over stdio (exposes a scan_skill tool)
+skillguardai mcp
 ```
+
+(`--json` is kept as a back-compat alias for `--format json`.)
 
 Example:
 
@@ -222,9 +231,12 @@ src/
   rules.rs       Embedded TOML rule-pack loader
   skill.rs       SKILL.md frontmatter parsing and script detection
   walker.rs      Safe file walk with fail-closed size caps
-  engine.rs      Rule matching plus structural checks
+  engine.rs      Rule matching plus structural checks (unicode, triggers)
+  taint.rs       Python dynamic-execution analyzer
   baseline.rs    Baseline suppression of reviewed findings
   report.rs      Terminal and JSON rendering
+  sarif.rs       SARIF 2.1.0 rendering
+  mcp.rs         MCP server (stdio JSON-RPC) exposing scan_skill
 rules/
   default.toml   The embedded rule pack (data, not code)
 tests/
@@ -234,7 +246,10 @@ tests/
 
 ## Release Status
 
-Current release: **`v0.1.0`**, published on [crates.io](https://crates.io/crates/skillguardai).
+Published on [crates.io](https://crates.io/crates/skillguardai): **`v0.1.0`**.
+**`v0.2.0`** is prepared on `main` — SARIF output, unicode-confusable and
+hidden-character detection, the Python dynamic-execution analyzer, MCP server mode,
+and false-positive tuning — pending publish.
 
 Each release is verified with Clippy, the full test suite, and an optimized release
 build before publishing.
