@@ -20,7 +20,10 @@ pub fn print_terminal(reports: &[SkillReport]) {
             if r.has_executable_scripts { "  (ships scripts)" } else { "" });
         for f in &r.findings {
             let line = f.line.map(|l| l.to_string()).unwrap_or_else(|| "-".into());
-            println!("  {:<8?} {:<18} {}:{}  {}", f.severity, f.category, f.file, line, f.description);
+            // Pad the stringified label — `{:<8?}` does not pad derived Debug output,
+            // so long labels (Critical/Medium) misalign the columns.
+            let sev = format!("{:?}", f.severity);
+            println!("  {sev:<8} {:<18} {}:{}  {}", f.category, f.file, line, f.description);
         }
     }
 }

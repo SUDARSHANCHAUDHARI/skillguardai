@@ -43,7 +43,9 @@ id = "cred-env-read"
 category = "credential-access"
 severity = "medium"
 description = "Reads a .env secrets file"
-pattern = '(cat|source|read)[^\n]*\.env\b'
+# `read` was too broad — English prose "read the .env" tripped it. Use actual
+# file-reading commands / dotenv loaders instead.
+pattern = '(cat|source|less|more|head|tail|xxd|strings|dotenv|load_dotenv|open\()[^\n]*\.env\b'
 
 [[rule]]
 id = "cred-aws-read"
