@@ -1,9 +1,28 @@
+use std::sync::LazyLock;
+
 use crate::findings::{Finding, Severity};
 use crate::rules::RulePack;
 use crate::skill::Skill;
 use crate::walker::TextFile;
 
 pub struct ScanResult { pub findings: Vec<Finding>, pub has_executable_scripts: bool }
+
+/// Words that mark a line as *describing* dangerous patterns to block/reject rather
+/// than invoking them — e.g. "Blocked patterns: eval(), exec(), subprocess".
+static DENYLIST_CTX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?i)\b(block(ed|s|list)?|denylist|disallow(ed)?|forbidden|banned?|prohibit(ed)?|not allowed|never (run|use|call|execute))\b",
+    )
+    .expect("denylist-context regex")
+});
+
+/// True when a line frames dangerous tokens as blocked/rejected, not used. Same-line
+/// only — a real call on its own line still fires. Conservative and gameable (an
+/// attacker could add "blocked" to a payload line), but it clears the common
+/// allowlist/blocklist-documentation false positive.
+fn is_denylist_context(line: &str) -> bool {
+    DENYLIST_CTX.is_match(line)
+}
 
 /// Markdown/plain-text docs where a single-backtick span is documentation notation,
 /// never something an agent executes. Real code lives in `.py`/`.sh`/etc. and is never
@@ -55,6 +74,8 @@ pub fn scan(skill: &Skill, files: &[TextFile], rules: &RulePack) -> ScanResult {
             } else {
                 Vec::new()
             };
+            // A blocklist/allowlist line names dangerous tokens to reject, not run.
+            let denylist_ctx = is_denylist_context(line);
             for rule in &rules.rules {
                 // Keep the finding if at least one match starts outside every inline-code
                 // span. When `spans` is empty (real code file, or inside a fence, or prose
@@ -63,7 +84,7 @@ pub fn scan(skill: &Skill, files: &[TextFile], rules: &RulePack) -> ScanResult {
                     .regex
                     .find_iter(line)
                     .any(|m| !spans.iter().any(|&(s, e)| m.start() >= s && m.start() <= e));
-                if matched_outside {
+                if matched_outside && !denylist_ctx {
                     findings.push(Finding {
                         rule_id: rule.id.clone(),
                         category: rule.category.clone(),
@@ -79,7 +100,13 @@ pub fn scan(skill: &Skill, files: &[TextFile], rules: &RulePack) -> ScanResult {
     }
 
     if let Some(fm) = &skill.frontmatter {
-        if fm.triggers.iter().any(|t| { let t = t.trim(); t == "*" || t == ".*" || t.is_empty() }) {
+        // A match-everything trigger is excessive. Note: an ABSENT/empty triggers list
+        // is intentionally NOT flagged — no trigger means no broad auto-activation; only
+        // a present-but-match-all trigger (including an empty string) is the risk.
+        if fm.triggers.iter().any(|t| {
+            let t = t.trim();
+            t == "*" || t == "**" || t == ".*" || t == "*.*" || t.is_empty()
+        }) {
             findings.push(Finding {
                 rule_id: "excessive-trigger-broad".into(), category: "excessive-trigger".into(),
                 severity: Severity::Medium, description: "Skill activates on an overly broad trigger".into(),
@@ -165,6 +192,20 @@ mod tests {
         let py = "process = subprocess.Popen(server['cmd'], shell=True)\n";
         let res = scan(&skill_with(vec![], false), &[tf_named("scripts/run.py", py)], &rules);
         assert!(has(&res, "exec-backtick-shell"), "real code in a .py must stay flagged");
+    }
+    #[test]
+    fn denylist_context_line_is_suppressed() {
+        // "Blocked patterns: ... eval(), exec()" describes what to reject, not run.
+        let rules = RulePack::load_default().unwrap();
+        let files = vec![tf("- Blocked patterns: rm -rf, sudo, eval(), exec(), subprocess\n")];
+        let res = scan(&skill_with(vec![], false), &files, &rules);
+        assert!(!has(&res, "exec-eval"), "denylist-context line should be suppressed");
+    }
+    #[test]
+    fn double_star_trigger_is_flagged() {
+        let rules = RulePack::load_default().unwrap();
+        let res = scan(&skill_with(vec!["**"], false), &[], &rules);
+        assert!(res.findings.iter().any(|f| f.category == "excessive-trigger"));
     }
     #[test]
     fn match_outside_backticks_in_markdown_still_flags() {

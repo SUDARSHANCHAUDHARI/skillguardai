@@ -76,6 +76,15 @@ mod tests {
         assert!(!r.regex.is_match("run an eval (a scored check)"));
     }
     #[test]
+    fn cred_env_read_matches_commands_not_prose() {
+        let pack = RulePack::load_default().unwrap();
+        let r = pack.rules.iter().find(|r| r.id == "cred-env-read").unwrap();
+        assert!(r.regex.is_match("cat .env"));
+        assert!(r.regex.is_match("source .env"));
+        // Prose "read the .env" must no longer trip it.
+        assert!(!r.regex.is_match("read the .env file for config"));
+    }
+    #[test]
     fn bad_regex_is_reported_with_rule_id() {
         let err = RulePack::from_toml_str(
             "[[rule]]\nid=\"bad\"\ncategory=\"c\"\nseverity=\"low\"\ndescription=\"d\"\npattern=\"(\"\n"
