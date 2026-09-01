@@ -4,6 +4,7 @@ mod rules;
 mod skill;
 mod walker;
 mod engine;
+mod taint;
 mod baseline;
 mod report;
 mod sarif;
