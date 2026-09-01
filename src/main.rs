@@ -8,6 +8,7 @@ mod taint;
 mod baseline;
 mod report;
 mod sarif;
+mod mcp;
 mod cli;
 
 fn main() { std::process::exit(cli::run()); }

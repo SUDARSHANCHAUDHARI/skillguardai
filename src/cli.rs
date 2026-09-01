@@ -35,6 +35,8 @@ enum Command {
         #[arg(long, value_name = "FILE")]
         baseline: Option<PathBuf>,
     },
+    /// Run as an MCP server over stdio, exposing a `scan_skill` tool.
+    Mcp,
 }
 
 /// Scan one skill, dropping any findings the baseline suppresses BEFORE scoring.
@@ -112,5 +114,6 @@ pub fn run() -> i32 {
             let worst = reports.iter().map(|r| r.score.exit_code).max().unwrap_or(0);
             worst.max(if had_error { 2 } else { 0 })
         }
+        Command::Mcp => crate::mcp::serve(),
     }
 }
