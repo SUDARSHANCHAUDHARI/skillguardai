@@ -24,6 +24,47 @@ fn is_denylist_context(line: &str) -> bool {
     DENYLIST_CTX.is_match(line)
 }
 
+/// First hidden/invisible control character on a line, if any: zero-width chars,
+/// bidi embeddings/overrides/isolates (the "Trojan Source" set), word joiner,
+/// invisible math, and a stray BOM. These render as nothing but can hide or reorder
+/// instructions an agent reads.
+fn hidden_unicode_char(line: &str) -> Option<char> {
+    line.chars().find(|&c| {
+        matches!(c as u32,
+            0x200B..=0x200F   // zero-width space/non-joiner/joiner, LRM/RLM
+            | 0x202A..=0x202E // bidi embeddings + overrides
+            | 0x2060..=0x2064 // word joiner, invisible math
+            | 0x2066..=0x2069 // bidi isolates
+            | 0xFEFF          // zero-width no-break space / BOM
+        )
+    })
+}
+
+/// True when any alphabetic token mixes Latin with Cyrillic or Greek letters — the
+/// homoglyph-spoofing signature (e.g. "pаypal" with a Cyrillic а). A wholly non-Latin
+/// word is legitimate and not flagged; only the Latin+confusable-script MIX is.
+fn has_mixed_script_token(line: &str) -> bool {
+    let (mut latin, mut confusable) = (false, false);
+    for c in line.chars() {
+        if c.is_alphabetic() {
+            match c as u32 {
+                0x41..=0x5A | 0x61..=0x7A | 0xC0..=0x24F => latin = true, // ASCII/Latin
+                0x0370..=0x03FF | 0x1F00..=0x1FFF => confusable = true,   // Greek
+                0x0400..=0x052F => confusable = true,                     // Cyrillic
+                _ => {}
+            }
+            if latin && confusable {
+                return true;
+            }
+        } else {
+            // token boundary — reset script flags
+            latin = false;
+            confusable = false;
+        }
+    }
+    false
+}
+
 /// Markdown/plain-text docs where a single-backtick span is documentation notation,
 /// never something an agent executes. Real code lives in `.py`/`.sh`/etc. and is never
 /// treated this way.
@@ -95,6 +136,30 @@ pub fn scan(skill: &Skill, files: &[TextFile], rules: &RulePack) -> ScanResult {
                         snippet: Some(line.trim().chars().take(160).collect()),
                     });
                 }
+            }
+            // Structural unicode checks — deliberately NOT subject to inline-code or
+            // denylist suppression: a hidden char or homoglyph is suspicious anywhere.
+            if let Some(c) = hidden_unicode_char(line) {
+                findings.push(Finding {
+                    rule_id: "unicode-hidden-char".into(),
+                    category: "obfuscation".into(),
+                    severity: Severity::High,
+                    description: format!("Hidden/invisible unicode character U+{:04X}", c as u32),
+                    file: f.rel.clone(),
+                    line: Some(idx + 1),
+                    snippet: None,
+                });
+            }
+            if has_mixed_script_token(line) {
+                findings.push(Finding {
+                    rule_id: "unicode-mixed-script".into(),
+                    category: "obfuscation".into(),
+                    severity: Severity::Medium,
+                    description: "Mixed-script word (possible homoglyph spoofing)".into(),
+                    file: f.rel.clone(),
+                    line: Some(idx + 1),
+                    snippet: Some(line.trim().chars().take(160).collect()),
+                });
             }
         }
     }
@@ -200,6 +265,31 @@ mod tests {
         let files = vec![tf("- Blocked patterns: rm -rf, sudo, eval(), exec(), subprocess\n")];
         let res = scan(&skill_with(vec![], false), &files, &rules);
         assert!(!has(&res, "exec-eval"), "denylist-context line should be suppressed");
+    }
+    #[test]
+    fn hidden_unicode_char_is_flagged() {
+        let rules = RulePack::load_default().unwrap();
+        // zero-width space embedded in otherwise-innocent text
+        let files = vec![tf("run the helper\u{200b} normally\n")];
+        let res = scan(&skill_with(vec![], false), &files, &rules);
+        assert!(has(&res, "unicode-hidden-char"));
+    }
+    #[test]
+    fn mixed_script_homoglyph_is_flagged() {
+        let rules = RulePack::load_default().unwrap();
+        // "pаypal" — the 'а' is Cyrillic U+0430
+        let files = vec![tf("visit p\u{0430}ypal to continue\n")];
+        let res = scan(&skill_with(vec![], false), &files, &rules);
+        assert!(has(&res, "unicode-mixed-script"));
+    }
+    #[test]
+    fn plain_ascii_and_pure_nonlatin_are_not_flagged() {
+        let rules = RulePack::load_default().unwrap();
+        // plain ASCII, and a wholly-Cyrillic word (legitimate) — neither is a mix
+        let files = vec![tf("normal ascii line\n\u{043f}\u{0440}\u{0438}\u{0432}\u{0435}\u{0442}\n")];
+        let res = scan(&skill_with(vec![], false), &files, &rules);
+        assert!(!has(&res, "unicode-mixed-script"));
+        assert!(!has(&res, "unicode-hidden-char"));
     }
     #[test]
     fn double_star_trigger_is_flagged() {
