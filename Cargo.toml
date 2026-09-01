@@ -1,6 +1,6 @@
 [package]
 name = "skillguardai"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "SkillGuardAI — static, no-network security scanner for AI-agent skills and plugins"
 license = "Apache-2.0"
