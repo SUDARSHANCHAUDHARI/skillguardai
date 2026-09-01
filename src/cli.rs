@@ -1,6 +1,6 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
-use crate::{baseline::Baseline, engine, report, rules::RulePack, score, skill, walker};
+use crate::{baseline::Baseline, engine, report, rules::RulePack, sarif, score, skill, walker};
 use crate::baseline;
 use crate::walker::WalkCaps;
 use crate::report::SkillReport;
@@ -9,12 +9,26 @@ use crate::report::SkillReport;
 #[command(name = "skillguardai", version, about = "SkillGuardAI — static security scanner for AI-agent skills")]
 struct Cli { #[command(subcommand)] command: Command }
 
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+enum Format {
+    /// Human-readable terminal report (default).
+    Terminal,
+    /// Machine-readable JSON.
+    Json,
+    /// SARIF 2.1.0 for CI / GitHub code scanning.
+    Sarif,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Scan a skill directory (or, with --all, every subdirectory containing a SKILL.md)
     Scan {
         path: PathBuf,
         #[arg(long)] all: bool,
+        /// Output format. Overrides --json when both are given.
+        #[arg(long, value_enum, default_value_t = Format::Terminal)]
+        format: Format,
+        /// Deprecated alias for `--format json`.
         #[arg(long)] json: bool,
         /// Suppress known findings listed in a baseline TOML file. If omitted, a
         /// `.skillguardai-baseline.toml` in the scanned directory is used when present.
@@ -66,7 +80,9 @@ pub fn run() -> i32 {
         Err(e) => { eprintln!("error: {e}"); return 2; }
     };
     match cli.command {
-        Command::Scan { path, all, json, baseline } => {
+        Command::Scan { path, all, format, json, baseline } => {
+            // --json is a back-compat alias; --format wins when it is non-default.
+            let format = if json && format == Format::Terminal { Format::Json } else { format };
             let baseline = match resolve_baseline(&path, baseline) {
                 Ok(b) => b,
                 Err(e) => { eprintln!("error: {e}"); return 2; }
@@ -85,8 +101,11 @@ pub fn run() -> i32 {
                     }
                 }
             }
-            if json { println!("{}", report::to_json(&reports)); }
-            else { report::print_terminal(&reports); }
+            match format {
+                Format::Json => println!("{}", report::to_json(&reports)),
+                Format::Sarif => println!("{}", sarif::to_sarif(&reports)),
+                Format::Terminal => report::print_terminal(&reports),
+            }
             if suppressed_total > 0 {
                 eprintln!("({suppressed_total} finding(s) suppressed by baseline)");
             }
