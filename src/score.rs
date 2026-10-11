@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::collections::HashSet;
-use crate::findings::Finding;
+use crate::findings::{Finding, Severity};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -25,7 +25,9 @@ pub fn score(findings: &[Finding], has_executable_scripts: bool) -> Score {
         51..=80 => Band::High,
         _ => Band::Critical,
     };
-    let exit_code = match band { Band::Low | Band::Medium => 0, _ => 1 };
+    // A single Critical finding must fail the gate even when its score alone lands in MEDIUM.
+    let any_critical = findings.iter().any(|f| f.severity == Severity::Critical);
+    let exit_code = match band { Band::Low | Band::Medium if !any_critical => 0, _ => 1 };
     Score { value, band, exit_code }
 }
 
@@ -51,6 +53,13 @@ mod tests {
     fn one_critical_is_high_band_exit_one() {
         let s = score(&[f(Severity::Critical)], false);
         assert_eq!(s.value, 50);        // 50, no multiplier
+        assert_eq!(s.band, Band::Medium);
+        assert_eq!(s.exit_code, 1);     // any surviving Critical fails the gate
+    }
+    #[test]
+    fn medium_band_without_critical_exits_zero() {
+        let s = score(&[f_id("a", Severity::High), f_id("b", Severity::High)], false);
+        assert_eq!(s.value, 50);
         assert_eq!(s.band, Band::Medium);
         assert_eq!(s.exit_code, 0);
     }
