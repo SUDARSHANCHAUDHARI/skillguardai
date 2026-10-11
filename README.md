@@ -51,7 +51,7 @@ publishes agent skills and wants a fast, deterministic answer to "is this safe?"
 - **Python dynamic-execution analysis**: distinguishes dangerous sinks fed dynamic input (`eval(user_input)`) from harmless literals, and flags `shell=True` and unsafe deserialization.
 - Risk score (0–100) → severity band → decision-shaped process exit code.
 - Distinct-rule scoring: a pattern repeated across many lines counts once, not many times.
-- Mention-vs-use awareness: matches inside Markdown inline-code spans (and blocklist/allowlist lines) are treated as documentation, while fenced code blocks and real code files stay fully flagged.
+- Mention-vs-use awareness: matches inside Markdown inline-code spans (and blocklist/allowlist lines) are treated as documentation, while fenced code blocks, real code files, `SKILL.md` and the docs it links to stay fully flagged.
 - Baseline suppression: acknowledge reviewed, benign findings so a scan of trusted skills exits clean.
 - **MCP server mode** (`skillguardai mcp`): expose a `scan_skill` tool over stdio for runtime guardrails.
 - Fail-closed limits and binary/media asset skipping, so large demo assets never derail a scan.
@@ -207,7 +207,9 @@ in plain sight.
 - **Mention vs. use.** Inside Markdown/plain-text docs, a match that falls within an
   inline-code span (`` `eval()` ``) is treated as a mention and suppressed — but only
   there. Matches inside fenced code blocks and in real code files (`.py`, `.sh`, …) are
-  always kept, because that is where a real payload would live.
+  always kept, because that is where a real payload would live. `SKILL.md` and any doc it
+  links to are also always kept: they are instructions the agent follows, so a backticked
+  command there ("run `curl … | bash` first") is a command, not notation.
 - Rule-based detection still has limits: it can miss disguised attacks and flag benign
   content that describes a risky pattern in prose. Treat a HIGH/CRITICAL verdict as a
   prompt for human review, not a guarantee of malice, and record vetted exceptions in a
