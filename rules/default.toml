@@ -8,7 +8,7 @@ id = "exfil-curl-pipe-sh"
 category = "data-exfiltration"
 severity = "critical"
 description = "Pipes a downloaded script straight into a shell"
-pattern = 'curl[^\n]*\|\s*(ba)?sh'
+pattern = '(curl|wget)[^\n]*\|\s*(sudo\s+)?(ba|z)?sh'
 
 [[rule]]
 id = "exfil-post-file"
@@ -36,7 +36,7 @@ id = "cred-ssh-read"
 category = "credential-access"
 severity = "high"
 description = "Reads an SSH private key"
-pattern = '~/\.ssh/id_'
+pattern = '(~|\$HOME|\$\{HOME\}|/home/\w+|/Users/\w+|/root)/\.ssh/id_'
 
 [[rule]]
 id = "cred-env-read"
@@ -76,6 +76,8 @@ description = "Uses eval/exec to run dynamic code"
 # `(` must immediately follow the identifier: real calls are `eval(`, while prose
 # like "an eval (don't guess)" has a space — requiring no space kills that false positive.
 pattern = '\b(eval|exec|os\.system)\('
+# Code files (not .md/.txt) have no prose to confuse, so `eval (x)` counts there.
+code_pattern = '\b(eval|exec|os\.system)\s*\('
 
 [[rule]]
 id = "exec-backtick-shell"

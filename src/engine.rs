@@ -129,7 +129,8 @@ pub fn scan(skill: &Skill, files: &[TextFile], rules: &RulePack) -> ScanResult {
     for f in files {
         // Instruction docs are exempt: a backticked command in SKILL.md (or a doc it
         // points at) is still a command the agent runs.
-        let markdownish = is_markdownish(&f.rel) && !instructions.contains(f.rel.as_str());
+        let docish = is_markdownish(&f.rel);
+        let markdownish = docish && !instructions.contains(f.rel.as_str());
         // Track fenced ``` / ~~~ code blocks: matches INSIDE a fence are real (payloads
         // hide there) and are never suppressed. Only inline-code spans in prose are.
         let mut in_fence = false;
@@ -150,7 +151,8 @@ pub fn scan(skill: &Skill, files: &[TextFile], rules: &RulePack) -> ScanResult {
                 // Keep the finding if at least one match starts outside every inline-code
                 // span and before any denylist word. When `spans` is empty (real code file,
                 // or inside a fence, or prose with no backticks) only the denylist applies.
-                let matched_outside = rule.regex.find_iter(line).any(|m| {
+                let re = if docish { &rule.regex } else { rule.code_regex.as_ref().unwrap_or(&rule.regex) };
+                let matched_outside = re.find_iter(line).any(|m| {
                     !spans.iter().any(|&(s, e)| m.start() >= s && m.start() <= e)
                         && denylist_start.is_none_or(|d| m.start() < d)
                 });
@@ -288,6 +290,15 @@ mod tests {
         let py = "process = subprocess.Popen(server['cmd'], shell=True)\n";
         let res = scan(&skill_with(vec![], false), &[tf_named("scripts/run.py", py)], &rules);
         assert!(has(&res, "exec-backtick-shell"), "real code in a .py must stay flagged");
+    }
+    #[test]
+    fn spaced_eval_flags_in_code_but_not_markdown() {
+        let rules = RulePack::load_default().unwrap();
+        let line = "result = eval (payload)\n";
+        let res = scan(&skill_with(vec![], false), &[tf_named("scripts/run.py", line)], &rules);
+        assert!(has(&res, "exec-eval"), "spaced eval call in a .py must flag");
+        let res = scan(&skill_with(vec![], false), &[tf_named("SKILL.md", "run an eval (a scored check)\n")], &rules);
+        assert!(!has(&res, "exec-eval"), "prose in SKILL.md must not flag");
     }
     #[test]
     fn denylist_context_line_is_suppressed() {
