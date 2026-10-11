@@ -155,6 +155,9 @@ Findings are weighted by severity and summed over distinct rules, then multiplie
 | 81–100       | CRITICAL   | 1         |
 | (scan error) | —          | 2         |
 
+Any surviving Critical finding exits 1 regardless of band, so a lone `curl … | sh`
+(score 50, MEDIUM) still fails the gate.
+
 With `--all`, the worst verdict across all scanned skills drives the process exit
 code, and a per-skill scan error isolates to that skill (exit ≥ 2) without aborting
 the rest of the batch.
