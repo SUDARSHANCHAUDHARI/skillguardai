@@ -99,7 +99,7 @@ skillguardai scan <path> --format json
 skillguardai scan <path> --all --format sarif > results.sarif
 
 # Suppress reviewed, known-benign findings via a baseline file
-skillguardai scan <path> --all --baseline .skillguardai-baseline.toml
+skillguardai scan <path> --all --baseline ~/.config/skillguardai/baseline.toml
 
 # Run as an MCP server over stdio (exposes a scan_skill tool)
 skillguardai mcp
@@ -181,9 +181,13 @@ reason  = "Checklist names eval() as a review target, not a call."
 
 A finding is suppressed when `rule_id` matches and — where set — the `skill`
 (frontmatter or directory name) and `file` (relative path) match too. Suppression is
-applied **before scoring**, so a suppressed finding neither shows nor counts. Pass a
-baseline with `--baseline FILE`, or drop a `.skillguardai-baseline.toml` into the
-scanned directory to have it auto-loaded. See
+applied **before scoring**, so a suppressed finding neither shows nor counts — but every
+suppression is listed on stderr, naming the rule and location it dropped.
+
+Pass a baseline with `--baseline FILE`, or keep one at
+`$XDG_CONFIG_HOME/skillguardai/baseline.toml` (else `~/.config/skillguardai/baseline.toml`)
+to have it loaded by default. A baseline **inside the scanned directory is never loaded**:
+a hostile skill could otherwise ship its own and suppress the rules that catch it. See
 [`.skillguardai-baseline.example.toml`](.skillguardai-baseline.example.toml).
 
 Always fill in `reason` — an undocumented suppression is how a real finding later hides
