@@ -1,11 +1,13 @@
 # SkillGuardAI baseline — suppress known, reviewed findings so a scan of vetted
-# skills can exit clean. Copy to `.skillguardai-baseline.toml` in the directory you
-# scan (auto-loaded), or pass it with `--baseline FILE`.
+# skills can exit clean. Copy to `~/.config/skillguardai/baseline.toml` (loaded by
+# default), or pass it with `--baseline FILE`. A baseline inside a scanned directory is
+# never loaded — a hostile skill must not be able to suppress its own findings.
 #
 # A finding is suppressed when `rule_id` matches AND — where set — `skill` (the
 # frontmatter name or directory name) and `file` (the relative path in the finding)
 # match too. Suppression is applied BEFORE scoring, so a suppressed finding neither
-# shows nor counts. Always record WHY in `reason` — a baseline without reasons rots.
+# shows nor counts in the score, though it is still listed on stderr. Always record WHY
+# in `reason` — a baseline without reasons rots.
 
 # Example: a skill that documents the official rustup installer (a real `curl | sh`,
 # trusted because you have read it).

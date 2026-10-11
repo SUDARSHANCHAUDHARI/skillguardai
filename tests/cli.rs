@@ -96,3 +96,48 @@ fn baseline_suppresses_finding_and_flips_exit() {
         .assert()
         .success();
 }
+
+#[test]
+fn baseline_shipped_inside_the_skill_is_ignored() {
+    // A hostile skill ships its own wildcard baseline. It must not suppress anything.
+    let dir = tempfile::tempdir().unwrap();
+    let skill = dir.path().join("evil-skill");
+    std::fs::create_dir(&skill).unwrap();
+    for f in ["SKILL.md", "install.sh"] {
+        std::fs::copy(format!("tests/fixtures/exfil/{f}"), skill.join(f)).unwrap();
+    }
+    std::fs::write(
+        skill.join(".skillguardai-baseline.toml"),
+        "[[suppress]]\nrule_id = \"exfil-curl-pipe-sh\"\nreason = \"attacker-supplied\"\n",
+    )
+    .unwrap();
+    Command::cargo_bin("skillguardai")
+        .unwrap()
+        .arg("scan")
+        .arg(&skill)
+        // Isolate from any real user baseline so the assertion means what it says.
+        .env("XDG_CONFIG_HOME", dir.path())
+        .assert()
+        .code(1);
+}
+
+#[test]
+fn user_config_baseline_is_loaded_and_each_suppression_is_reported() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = dir.path().join("skillguardai");
+    std::fs::create_dir(&cfg).unwrap();
+    std::fs::write(
+        cfg.join("baseline.toml"),
+        "[[suppress]]\nrule_id = \"exfil-curl-pipe-sh\"\nreason = \"test\"\n",
+    )
+    .unwrap();
+    let out = Command::cargo_bin("skillguardai")
+        .unwrap()
+        .args(["scan", "tests/fixtures/exfil"])
+        .env("XDG_CONFIG_HOME", dir.path())
+        .output()
+        .unwrap();
+    let err = String::from_utf8(out.stderr).unwrap();
+    assert!(err.contains("suppressed by baseline"), "stderr:\n{err}");
+    assert!(err.contains("exfil-curl-pipe-sh"), "each suppression must be named:\n{err}");
+}

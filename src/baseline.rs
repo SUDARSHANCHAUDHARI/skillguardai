@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::findings::Finding;
 
@@ -26,8 +26,20 @@ struct Suppress {
     reason: Option<String>,
 }
 
-/// Conventional baseline filename auto-loaded from the scan target directory.
-pub const DEFAULT_FILENAME: &str = ".skillguardai-baseline.toml";
+/// Conventional baseline filename, read only from the user's config directory. A baseline
+/// inside the scanned tree is never loaded: a hostile skill could ship one that suppresses
+/// the very rules that would have caught it.
+pub const CONFIG_FILENAME: &str = "baseline.toml";
+
+/// `$XDG_CONFIG_HOME/skillguardai/baseline.toml`, else `$HOME/.config/skillguardai/baseline.toml`.
+/// `None` when neither variable is set — then there is no user baseline.
+pub fn user_config_path() -> Option<PathBuf> {
+    let base = match std::env::var_os("XDG_CONFIG_HOME") {
+        Some(v) if !v.is_empty() => PathBuf::from(v),
+        _ => PathBuf::from(std::env::var_os("HOME")?).join(".config"),
+    };
+    Some(base.join("skillguardai").join(CONFIG_FILENAME))
+}
 
 impl Baseline {
     pub fn from_toml_str(s: &str) -> anyhow::Result<Baseline> {
